@@ -2,11 +2,34 @@
 <html lang="es">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#3b82f6" />
-    <meta name="description" content="Mi Cash Flow - Gestión de finanzas personales" />
-    <title>Mi Cash Flow</title>
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="theme-color" content="#0f172a" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="format-detection" content="telephone=no" />
+    <title>Cash Flow</title>
+    <link rel="manifest" href="/manifest.json" />
+    <link rel="apple-touch-icon" href="/icon-192.png" />
+    <style>
+      /* Prevenir zoom en inputs en iOS */
+      input[type="text"],
+      input[type="number"],
+      input[type="email"],
+      input[type="tel"],
+      input[type="password"],
+      input[type="date"],
+      select,
+      textarea {
+        font-size: 16px !important;
+      }
+      
+      /* Prevenir scroll horizontal */
+      html, body {
+        overflow-x: hidden;
+        width: 100%;
+      }
+    </style>
   </head>
   <body>
     <div id="root"></div>

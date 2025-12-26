@@ -5,7 +5,8 @@ import { es } from 'date-fns/locale'
 import { 
   Home, CreditCard, Users, Building2, Wallet, TrendingUp, Stethoscope, 
   Plus, ArrowUpRight, ArrowDownRight, Filter, ArrowRightLeft,
-  Calendar, DollarSign, PiggyBank, MoreHorizontal, Check, RefreshCw, Loader2, Trash2
+  Calendar, DollarSign, PiggyBank, MoreHorizontal, Check, RefreshCw, Loader2, Trash2,
+  Banknote, Smartphone, Building, AlertCircle
 } from 'lucide-react'
 import * as db from './lib/supabase'
 import * as market from './lib/marketData'
@@ -20,6 +21,101 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { cn } from '@/lib/utils'
+
+// Componente NumericInput con validación
+const NumericInput = ({ value, onChange, placeholder = "0.00", className, allowDecimals = true, ...props }) => {
+  const [error, setError] = useState('')
+  const [localValue, setLocalValue] = useState(value || '')
+  
+  useEffect(() => {
+    setLocalValue(value || '')
+  }, [value])
+  
+  const handleChange = (e) => {
+    const inputValue = e.target.value
+    
+    // Permitir vacío
+    if (inputValue === '') {
+      setLocalValue('')
+      setError('')
+      onChange(e)
+      return
+    }
+    
+    // Regex para validar números (con o sin decimales)
+    const regex = allowDecimals ? /^-?\d*\.?\d*$/ : /^-?\d*$/
+    
+    if (regex.test(inputValue)) {
+      setLocalValue(inputValue)
+      setError('')
+      onChange(e)
+    } else {
+      setError('Solo números')
+    }
+  }
+  
+  return (
+    <div className="relative">
+      <Input 
+        type="text"
+        inputMode="decimal"
+        value={localValue}
+        onChange={handleChange}
+        placeholder={placeholder}
+        className={cn(className, error && 'border-red-500 focus-visible:ring-red-500')}
+        {...props}
+      />
+      {error && (
+        <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center text-red-500">
+          <AlertCircle className="h-4 w-4" />
+        </div>
+      )}
+      {error && (
+        <p className="text-xs text-red-500 mt-1">{error}</p>
+      )}
+    </div>
+  )
+}
+
+// Mapeo de iconos para billeteras (usando Lucide en vez de emojis)
+const WALLET_ICONS = {
+  'Efectivo': { icon: Banknote, color: 'text-green-500' },
+  'Mercadopago': { icon: Smartphone, color: 'text-sky-400' },
+  'Uala': { icon: CreditCard, color: 'text-fuchsia-500' },
+  'Naranja X': { icon: Smartphone, color: 'text-orange-500' },
+  'Santander': { icon: Building, color: 'text-red-500' },
+  'Santander USD': { icon: Building, color: 'text-red-500' },
+  'Dólares Efectivo': { icon: DollarSign, color: 'text-green-500' },
+  'default': { icon: Wallet, color: 'text-gray-400' }
+}
+
+const WalletIcon = ({ name, className = "h-5 w-5" }) => {
+  const config = WALLET_ICONS[name] || WALLET_ICONS['default']
+  const Icon = config.icon
+  return <Icon className={cn(className, config.color)} />
+}
+
+// Mapeo de iconos para tarjetas
+const CARD_ICONS = {
+  'Cordobesa': 'bg-red-500',
+  'Santander Visa': 'bg-blue-600',
+  'Santander Amex': 'bg-green-600',
+  'Galicia Visa': 'bg-orange-500',
+  'Galicia Master': 'bg-orange-500',
+  'Mercado Crédito': 'bg-sky-400',
+  'Uala Crédito': 'bg-fuchsia-500',
+  'Naranja': 'bg-orange-500',
+  'default': 'bg-gray-500'
+}
+
+const CardIcon = ({ name }) => {
+  const bgColor = CARD_ICONS[name] || CARD_ICONS['default']
+  return (
+    <div className={cn('w-6 h-4 rounded-sm flex items-center justify-center', bgColor)}>
+      <CreditCard className="h-3 w-3 text-white" />
+    </div>
+  )
+}
 
 // Utilities
 const formatCurrency = (amount, currency = 'ARS') => {
@@ -190,18 +286,18 @@ const TransactionModal = ({ open, onOpenChange, onSave, onTransfer, wallets = []
           </Tabs>
           
           <div className="grid gap-2">
-            <Label>Fecha</Label>
-            <Input type="date" value={form.date} onChange={e => h('date', e.target.value)} />
-          </div>
-          
-          <div className="grid gap-2">
             <Label>Descripción</Label>
-            <Input placeholder="Ej: Supermercado..." value={form.description} onChange={e => h('description', e.target.value)} />
+            <Input placeholder="Ej: Supermercado..." value={form.description} onChange={e => h('description', e.target.value)} autoFocus />
           </div>
           
           <div className="grid gap-2">
             <Label>Monto ({form.currency})</Label>
-            <Input type="number" placeholder="0.00" value={form.amount} onChange={e => h('amount', e.target.value)} />
+            <NumericInput placeholder="0.00" value={form.amount} onChange={e => h('amount', e.target.value)} />
+          </div>
+          
+          <div className="grid gap-2">
+            <Label>Fecha</Label>
+            <Input type="date" value={form.date} onChange={e => h('date', e.target.value)} />
           </div>
           
           {isTransfer ? (
@@ -312,7 +408,7 @@ const CreditCardModal = ({ open, onOpenChange, onSave, cards = [] }) => {
             </div>
             <div className="grid gap-2">
               <Label>Monto Total</Label>
-              <Input type="number" placeholder="0.00" value={form.total_amount} onChange={e => h('total_amount', e.target.value)} />
+              <NumericInput placeholder="0.00" value={form.total_amount} onChange={e => h('total_amount', e.target.value)} />
             </div>
             <div className="grid gap-2">
               <Label>Cuotas</Label>
@@ -378,7 +474,7 @@ const ManualDebtModal = ({ open, onOpenChange, onSave }) => {
           </Tabs>
           <div className="grid gap-2">
             <Label>Monto</Label>
-            <Input type="number" placeholder="0.00" value={form.amount} onChange={e => h('amount', e.target.value)} />
+            <NumericInput placeholder="0.00" value={form.amount} onChange={e => h('amount', e.target.value)} />
           </div>
           <div className="grid gap-2">
             <Label>Fecha</Label>
@@ -411,7 +507,7 @@ const InvestmentModal = ({ open, onOpenChange, onSave }) => {
           <Tabs value={form.platform} onValueChange={v => h('platform', v)}><TabsList className="grid w-full grid-cols-3"><TabsTrigger value="cripto">🪙 Crypto</TabsTrigger><TabsTrigger value="iol">🇦🇷 CEDEARs</TabsTrigger><TabsTrigger value="usa">🇺🇸 US</TabsTrigger></TabsList></Tabs>
           <Tabs value={form.type} onValueChange={v => h('type', v)}><TabsList className="grid w-full grid-cols-2"><TabsTrigger value="compra" className="data-[state=active]:bg-emerald-500 data-[state=active]:text-white">Compra</TabsTrigger><TabsTrigger value="venta" className="data-[state=active]:bg-red-500 data-[state=active]:text-white">Venta</TabsTrigger></TabsList></Tabs>
           <div className="grid gap-2"><Label>Símbolo / Ticker</Label><Input placeholder={form.platform === 'cripto' ? 'BTC, ETH, SOL...' : 'AAPL, GOOGL...'} value={form.asset_symbol} onChange={e => h('asset_symbol', e.target.value.toUpperCase())} /></div>
-          <div className="grid grid-cols-2 gap-4"><div className="grid gap-2"><Label>Cantidad</Label><Input type="number" value={form.quantity} onChange={e => h('quantity', e.target.value)} /></div><div className="grid gap-2"><Label>Precio ({form.currency})</Label><Input type="number" value={form.price} onChange={e => h('price', e.target.value)} /></div></div>
+          <div className="grid grid-cols-2 gap-4"><div className="grid gap-2"><Label>Cantidad</Label><NumericInput value={form.quantity} onChange={e => h('quantity', e.target.value)} /></div><div className="grid gap-2"><Label>Precio ({form.currency})</Label><NumericInput value={form.price} onChange={e => h('price', e.target.value)} /></div></div>
           {total > 0 && <div className="text-center p-4 bg-muted rounded-lg"><p className="text-sm text-muted-foreground">Total</p><p className="text-2xl font-bold">{formatCurrency(total, form.currency)}</p></div>}
         </div>
         <DialogFooter><Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button><Button className="bg-purple-600 hover:bg-purple-700" onClick={() => { if (!form.asset_symbol || !form.quantity || !form.price) return alert('Completá los campos'); onSave({ ...form, total }) }}>Guardar</Button></DialogFooter>
@@ -449,15 +545,15 @@ const SalaryModal = ({ open, onOpenChange, onSave, wallets = [], categories = []
           </div>
           <div className="grid gap-2">
             <Label>Sueldo Neto</Label>
-            <Input type="number" placeholder="0.00" value={form.net_salary} onChange={e => h('net_salary', e.target.value)} />
+            <NumericInput placeholder="0.00" value={form.net_salary} onChange={e => h('net_salary', e.target.value)} />
           </div>
           <div className="grid gap-2">
             <Label>Sueldo Bruto (opcional)</Label>
-            <Input type="number" placeholder="0.00" value={form.gross_salary} onChange={e => h('gross_salary', e.target.value)} />
+            <NumericInput placeholder="0.00" value={form.gross_salary} onChange={e => h('gross_salary', e.target.value)} />
           </div>
           <div className="grid gap-2">
             <Label>Bonus (opcional)</Label>
-            <Input type="number" placeholder="0.00" value={form.bonus} onChange={e => h('bonus', e.target.value)} />
+            <NumericInput placeholder="0.00" value={form.bonus} onChange={e => h('bonus', e.target.value)} />
           </div>
           <div className="grid gap-2">
             <Label>💰 Ingresar en billetera</Label>
@@ -494,7 +590,7 @@ const AptExpenseModal = ({ open, onOpenChange, onSave, categories = [], config =
         <DialogHeader><DialogTitle className="flex items-center gap-2"><Building2 className="h-5 w-5" /> Gasto de Depto</DialogTitle></DialogHeader>
         <div className="space-y-4">
           <div className="grid gap-2"><Label>Descripción</Label><Input placeholder="Ej: Alquiler..." value={form.description} onChange={e => h('description', e.target.value)} /></div>
-          <div className="grid gap-2"><Label>Monto</Label><Input type="number" placeholder="0.00" value={form.amount} onChange={e => h('amount', e.target.value)} /></div>
+          <div className="grid gap-2"><Label>Monto</Label><NumericInput placeholder="0.00" value={form.amount} onChange={e => h('amount', e.target.value)} /></div>
           <div className="grid gap-2"><Label>Categoría</Label><Select value={form.category} onValueChange={v => h('category', v)}><SelectTrigger><SelectValue placeholder="Seleccionar..." /></SelectTrigger><SelectContent>{cats.map(c => <SelectItem key={c.id} value={c.name}>{c.icon} {c.name}</SelectItem>)}</SelectContent></Select></div>
           <div className="grid gap-2"><Label>¿Quién pagó?</Label><Select value={form.paid_by} onValueChange={v => h('paid_by', v)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{config.map(p => <SelectItem key={p.id} value={p.person_name}>{p.person_name}</SelectItem>)}</SelectContent></Select></div>
         </div>
@@ -908,8 +1004,7 @@ export default function App() {
                         onChange={e => setFixedForm(f => ({ ...f, name: e.target.value }))}
                         className="h-8 text-sm flex-1"
                       />
-                      <Input 
-                        type="number" 
+                      <NumericInput 
                         placeholder="Monto" 
                         value={fixedForm.amount} 
                         onChange={e => setFixedForm(f => ({ ...f, amount: e.target.value }))}
@@ -930,8 +1025,7 @@ export default function App() {
                             onChange={e => setFixedForm(f => ({ ...f, name: e.target.value }))}
                             className="h-7 text-sm flex-1"
                           />
-                          <Input 
-                            type="number" 
+                          <NumericInput 
                             value={fixedForm.amount} 
                             onChange={e => setFixedForm(f => ({ ...f, amount: e.target.value }))}
                             className="h-7 text-sm w-24"
@@ -1005,7 +1099,7 @@ export default function App() {
             <div className="space-y-2">
               {wallets.filter(w => w.currency === currency).map(w => (
                 <div key={w.id} className="flex justify-between items-center p-3 bg-muted/50 rounded-lg">
-                  <span className="text-sm">{w.icon} {w.name}</span>
+                  <span className="text-sm flex items-center gap-2"><WalletIcon name={w.name} />{w.name}</span>
                   <span className="font-semibold">{formatCurrency(w.balance, currency)}</span>
                 </div>
               ))}
@@ -1363,13 +1457,11 @@ export default function App() {
                   </div>
                   {editing === p.person_name ? (
                     <div className="flex gap-2">
-                      <Input 
-                        type="number" 
+                      <NumericInput 
                         className="w-28 h-8" 
                         value={val} 
                         onChange={e => setVal(e.target.value)}
                         placeholder="Sueldo..."
-                        autoFocus
                       />
                       <Button size="sm" onClick={() => { saveAptSalary(p.person_name, +val); setEditing(null) }}>
                         <Check className="h-4 w-4" />
