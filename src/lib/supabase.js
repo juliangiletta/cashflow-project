@@ -149,6 +149,14 @@ export async function getCreditCards() {
   return data || []
 }
 
+export async function updateCreditCard(id, updates) {
+  const { error } = await supabase
+    .from('credit_cards')
+    .update(updates)
+    .eq('id', id)
+  if (error) throw error
+}
+
 export function calculateInstallmentStatementMonth(purchaseDate, closingDay, installmentNumber) {
   const purchase = new Date(purchaseDate + 'T12:00:00') // Evitar problemas de timezone
   const purchaseDay = purchase.getDate()

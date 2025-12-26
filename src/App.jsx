@@ -125,7 +125,32 @@ const formatCurrency = (amount, currency = 'ARS') => {
 const formatDate = (dateStr) => { try { return format(parseISO(dateStr), 'dd/MM/yyyy', { locale: es }) } catch { return dateStr || '' } }
 const formatMonth = (monthStr) => { try { const [y, m] = monthStr.split('-'); return format(new Date(+y, +m - 1, 1), 'MMMM yyyy', { locale: es }) } catch { return monthStr || '' } }
 const getCurrentMonth = () => format(new Date(), 'yyyy-MM')
-const getMonthOptions = (f = 12, p = 12) => { const opts = [], now = new Date(); for (let i = -f; i <= p; i++) { const d = new Date(now.getFullYear(), now.getMonth() - i, 1); opts.push({ value: format(d, 'yyyy-MM'), label: format(d, 'MMMM yyyy', { locale: es }) }) } return opts }
+const getMonthOptions = () => {
+  const opts = []
+  const now = new Date()
+  const startDate = new Date(2025, 10, 1) // Noviembre 2025
+  const endDate = new Date(now.getFullYear(), now.getMonth() + 3, 1) // 3 meses adelante
+  
+  let current = new Date(startDate)
+  while (current <= endDate) {
+    opts.push({ 
+      value: format(current, 'yyyy-MM'), 
+      label: format(current, 'MMMM yyyy', { locale: es }) 
+    })
+    current = new Date(current.getFullYear(), current.getMonth() + 1, 1)
+  }
+  return opts
+}
+
+const getMonthOptionsExtended = (future = 24) => {
+  const opts = []
+  const now = new Date()
+  for (let i = 0; i <= future; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth() + i, 1)
+    opts.push({ value: format(d, 'yyyy-MM'), label: format(d, 'MMMM yyyy', { locale: es }) })
+  }
+  return opts
+}
 
 const CHART_COLORS = ['#3b82f6', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16']
 
@@ -542,7 +567,7 @@ const SalaryModal = ({ open, onOpenChange, onSave, wallets = [], categories = []
             <Label>Mes</Label>
             <Select value={form.month} onValueChange={v => h('month', v)}>
               <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>{getMonthOptions(0, 24).map(m => <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>)}</SelectContent>
+              <SelectContent>{getMonthOptionsExtended(24).map(m => <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>)}</SelectContent>
             </Select>
           </div>
           <div className="grid gap-2">
@@ -1230,46 +1255,112 @@ export default function App() {
     )
   }
 
-  const Cards = () => (
-    <div className="space-y-4">
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-base">💳 Tarjetas</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-2 gap-2">
-            <div className="bg-red-500/20 rounded-lg p-3 text-center"><p className="text-xs text-red-400">Total ARS</p><p className="font-bold text-red-400">{formatCurrency(totalCardArs)}</p></div>
-            <div className="bg-blue-500/20 rounded-lg p-3 text-center"><p className="text-xs text-blue-400">Total USD</p><p className="font-bold text-blue-400">{formatCurrency(totalCardUsd, 'USD')}</p></div>
-          </div>
-        </CardContent>
-      </Card>
-      <Button className="w-full" onClick={() => setModals(p => ({ ...p, card: true }))}><Plus className="h-4 w-4 mr-2" />Agregar Gasto</Button>
-      {cardsByCard.map(c => (
-        <Card key={c.id}>
+  const Cards = () => {
+    const [editingCard, setEditingCard] = useState(null)
+    const [cardForm, setCardForm] = useState({ closing_day: '', due_day: '' })
+    
+    const startEditCard = (card) => {
+      setEditingCard(card)
+      setCardForm({ closing_day: card.closing_day?.toString() || '', due_day: card.due_day?.toString() || '' })
+    }
+    
+    const saveCardEdit = async () => {
+      if (!editingCard) return
+      try {
+        await db.updateCreditCard(editingCard.id, {
+          closing_day: parseInt(cardForm.closing_day) || editingCard.closing_day,
+          due_day: parseInt(cardForm.due_day) || editingCard.due_day
+        })
+        setCreditCards(await db.getCreditCards())
+        setEditingCard(null)
+      } catch (e) {
+        console.error('Error updating card:', e)
+        alert('Error al guardar')
+      }
+    }
+    
+    return (
+      <div className="space-y-4">
+        <Card>
           <CardHeader className="pb-2">
-            <div className="flex justify-between items-center">
-              <div><CardTitle className="text-base">{c.icon} {c.name}</CardTitle><CardDescription>Cierre: {c.closing_day} • Vto: {c.due_day}</CardDescription></div>
-              <div className="text-right">{c.totalArs > 0 && <p className="font-bold">{formatCurrency(c.totalArs)}</p>}{c.totalUsd > 0 && <p className="font-bold text-blue-400">{formatCurrency(c.totalUsd, 'USD')}</p>}</div>
-            </div>
+            <CardTitle className="text-base">💳 Tarjetas</CardTitle>
           </CardHeader>
           <CardContent>
-            {c.expenses.length ? c.expenses.map(e => (
-              <div key={e.id} className={cn('p-3 rounded-lg mb-2', e.is_own_expense ? 'bg-muted/50' : 'bg-orange-500/20')}>
-                <div className="flex justify-between">
-                  <div>
-                    <p className="font-medium text-sm">{e.description}</p>
-                    <p className="text-xs text-muted-foreground">{formatDate(e.purchase_date)} {e.total_installments > 1 && `• ${e.installment_number}/${e.total_installments}`}</p>
-                    {!e.is_own_expense && <Badge className="mt-1 bg-orange-500">👤 {e.borrower_name}</Badge>}
-                  </div>
-                  <p className="font-semibold">{formatCurrency(e.installment_amount, e.currency)}</p>
-                </div>
-              </div>
-            )) : <p className="text-center text-muted-foreground py-4">Sin gastos este mes</p>}
+            <div className="grid grid-cols-2 gap-2">
+              <div className="bg-red-500/20 rounded-lg p-3 text-center"><p className="text-xs text-red-400">Total ARS</p><p className="font-bold text-red-400">{formatCurrency(totalCardArs)}</p></div>
+              <div className="bg-blue-500/20 rounded-lg p-3 text-center"><p className="text-xs text-blue-400">Total USD</p><p className="font-bold text-blue-400">{formatCurrency(totalCardUsd, 'USD')}</p></div>
+            </div>
           </CardContent>
         </Card>
-      ))}
-    </div>
-  )
+        <Button className="w-full" onClick={() => setModals(p => ({ ...p, card: true }))}><Plus className="h-4 w-4 mr-2" />Agregar Gasto</Button>
+        {cardsByCard.map(c => (
+          <Card key={c.id}>
+            <CardHeader className="pb-2">
+              <div className="flex justify-between items-center">
+                <div className="flex-1">
+                  <CardTitle className="text-base">{c.icon} {c.name}</CardTitle>
+                  {editingCard?.id === c.id ? (
+                    <div className="flex gap-2 mt-2 items-center">
+                      <div className="flex items-center gap-1">
+                        <span className="text-xs text-muted-foreground">Cierre:</span>
+                        <Input 
+                          type="number" 
+                          min="1" 
+                          max="31" 
+                          value={cardForm.closing_day} 
+                          onChange={e => setCardForm(f => ({ ...f, closing_day: e.target.value }))}
+                          className="w-14 h-7 text-sm"
+                        />
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <span className="text-xs text-muted-foreground">Vto:</span>
+                        <Input 
+                          type="number" 
+                          min="1" 
+                          max="31" 
+                          value={cardForm.due_day} 
+                          onChange={e => setCardForm(f => ({ ...f, due_day: e.target.value }))}
+                          className="w-14 h-7 text-sm"
+                        />
+                      </div>
+                      <Button size="sm" className="h-7" onClick={saveCardEdit}>
+                        <Check className="h-3 w-3" />
+                      </Button>
+                      <Button size="sm" variant="ghost" className="h-7" onClick={() => setEditingCard(null)}>
+                        ✕
+                      </Button>
+                    </div>
+                  ) : (
+                    <CardDescription 
+                      className="cursor-pointer hover:text-primary transition-colors"
+                      onClick={() => startEditCard(c)}
+                    >
+                      Cierre: {c.closing_day} • Vto: {c.due_day} <span className="text-xs">(tocar para editar)</span>
+                    </CardDescription>
+                  )}
+                </div>
+                <div className="text-right">{c.totalArs > 0 && <p className="font-bold">{formatCurrency(c.totalArs)}</p>}{c.totalUsd > 0 && <p className="font-bold text-blue-400">{formatCurrency(c.totalUsd, 'USD')}</p>}</div>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {c.expenses.length ? c.expenses.map(e => (
+                <div key={e.id} className={cn('p-3 rounded-lg mb-2', e.is_own_expense ? 'bg-muted/50' : 'bg-orange-500/20')}>
+                  <div className="flex justify-between">
+                    <div>
+                      <p className="font-medium text-sm">{e.description}</p>
+                      <p className="text-xs text-muted-foreground">{formatDate(e.purchase_date)} {e.total_installments > 1 && `• ${e.installment_number}/${e.total_installments}`}</p>
+                      {!e.is_own_expense && <Badge className="mt-1 bg-orange-500">👤 {e.borrower_name}</Badge>}
+                    </div>
+                    <p className="font-semibold">{formatCurrency(e.installment_amount, e.currency)}</p>
+                  </div>
+                </div>
+              )) : <p className="text-center text-muted-foreground py-4">Sin gastos este mes</p>}
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+    )
+  }
 
   // DEUDAS - UPDATED with confirm button
   const Debts = () => {
