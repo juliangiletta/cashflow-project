@@ -781,19 +781,34 @@ export async function deleteInvestment(id) {
 
 
 // ============================================
-// FIXED EXPENSES (Gastos Fijos)
+// FIXED EXPENSES (Gastos Fijos) - Mensuales
 // ============================================
-export async function getFixedExpenses() {
-  const { data, error } = await supabase
+export async function getFixedExpenses(month) {
+  // month viene como "2025-12", convertir a fecha "2025-12-01"
+  const monthDate = month ? `${month}-01` : null
+  
+  let query = supabase
     .from('fixed_expenses')
     .select('*')
     .eq('is_active', true)
     .order('sort_order')
+  
+  if (monthDate) {
+    query = query.eq('month', monthDate)
+  }
+  
+  const { data, error } = await query
   if (error) { console.error('Error getFixedExpenses:', error); return [] }
   return data || []
 }
 
 export async function createFixedExpense(expense) {
+  // Convertir month "2025-12" a fecha "2025-12-01"
+  let monthValue = expense.month
+  if (monthValue && monthValue.length === 7) {
+    monthValue = `${monthValue}-01`
+  }
+  
   const { data, error } = await supabase
     .from('fixed_expenses')
     .insert([{
@@ -801,7 +816,8 @@ export async function createFixedExpense(expense) {
       amount: parseFloat(expense.amount) || 0,
       currency: expense.currency || 'ARS',
       icon: expense.icon || '📌',
-      sort_order: expense.sort_order || 99
+      sort_order: expense.sort_order || 99,
+      month: monthValue
     }])
     .select()
     .single()
@@ -823,4 +839,38 @@ export async function deleteFixedExpense(id) {
     .delete()
     .eq('id', id)
   if (error) throw error
+}
+
+export async function copyFixedExpensesFromPreviousMonth(currentMonth) {
+  // currentMonth viene como "2025-12"
+  const [year, monthNum] = currentMonth.split('-').map(Number)
+  const prevDate = new Date(year, monthNum - 2, 1) // -2 porque month es 0-indexed
+  const prevMonth = `${prevDate.getFullYear()}-${String(prevDate.getMonth() + 1).padStart(2, '0')}`
+  
+  // Obtener gastos del mes anterior
+  const prevExpenses = await getFixedExpenses(prevMonth)
+  
+  if (prevExpenses.length === 0) {
+    return { copied: 0, message: 'No hay gastos fijos en el mes anterior' }
+  }
+  
+  // Crear copias para el mes actual
+  const currentMonthDate = `${currentMonth}-01`
+  const newExpenses = prevExpenses.map(e => ({
+    name: e.name,
+    amount: e.amount,
+    currency: e.currency,
+    icon: e.icon,
+    sort_order: e.sort_order,
+    month: currentMonthDate,
+    is_active: true
+  }))
+  
+  const { data, error } = await supabase
+    .from('fixed_expenses')
+    .insert(newExpenses)
+    .select()
+  
+  if (error) throw error
+  return { copied: data.length, message: `Se copiaron ${data.length} gastos fijos` }
 }

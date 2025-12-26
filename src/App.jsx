@@ -6,7 +6,7 @@ import {
   Home, CreditCard, Users, Building2, Wallet, TrendingUp, Stethoscope, 
   Plus, ArrowUpRight, ArrowDownRight, Filter, ArrowRightLeft,
   Calendar, DollarSign, PiggyBank, MoreHorizontal, Check, RefreshCw, Loader2, Trash2,
-  Banknote, Smartphone, Building, AlertCircle
+  Banknote, Smartphone, Building, AlertCircle, Copy
 } from 'lucide-react'
 import * as db from './lib/supabase'
 import * as market from './lib/marketData'
@@ -650,26 +650,25 @@ export default function App() {
   const loadData = async () => {
     try {
       setLoading(true)
-      const [w, cat, med, cards, d, ac, sh, inv, fe] = await Promise.all([
+      const [w, cat, med, cards, d, ac, sh, inv] = await Promise.all([
         db.getWallets(), db.getCategories(), db.getMedicalRecords(), db.getCreditCards(), 
-        db.getDebtsByPerson(), db.getApartmentConfig(), db.getSalaryHistory(), db.getInvestments(),
-        db.getFixedExpenses()
+        db.getDebtsByPerson(), db.getApartmentConfig(), db.getSalaryHistory(), db.getInvestments()
       ])
       setWallets(w); setCategories(cat); setMedicalRecords(med)
       setCreditCards(cards); setDebts(d); setAptConfig(ac)
-      setSalaryHistory(sh); setInvestments(inv); setFixedExpenses(fe)
+      setSalaryHistory(sh); setInvestments(inv)
       await loadMonthly()
     } catch (e) { console.error('Error loading data:', e) } 
     finally { setLoading(false) }
   }
 
   const loadMonthly = async () => {
-    const [tx, sum, as, ae, ce] = await Promise.all([
+    const [tx, sum, as, ae, ce, fe] = await Promise.all([
       db.getTransactions({ month, ...filters }), db.getMonthlySummary(month), 
       db.getApartmentSalaries(month), db.getApartmentExpenses(month), 
-      db.getInstallmentsByStatementMonth(month)
+      db.getInstallmentsByStatementMonth(month), db.getFixedExpenses(month)
     ])
-    setTransactions(tx); setSummary(sum); setAptSalaries(as); setAptExpenses(ae); setCardExpenses(ce)
+    setTransactions(tx); setSummary(sum); setAptSalaries(as); setAptExpenses(ae); setCardExpenses(ce); setFixedExpenses(fe)
   }
 
   // Refresh all data
@@ -883,6 +882,7 @@ export default function App() {
     const [showFixedExpenses, setShowFixedExpenses] = useState(false)
     const [editingFixed, setEditingFixed] = useState(null)
     const [fixedForm, setFixedForm] = useState({ name: '', amount: '', icon: '📌' })
+    const [showAddFixedForm, setShowAddFixedForm] = useState(false)
     
     // Calcular mi parte del depto
     const myName = 'Julian'
@@ -921,11 +921,12 @@ export default function App() {
             icon: fixedForm.icon
           })
         } else {
-          await db.createFixedExpense(fixedForm)
+          await db.createFixedExpense({ ...fixedForm, month })
         }
-        setFixedExpenses(await db.getFixedExpenses())
+        setFixedExpenses(await db.getFixedExpenses(month))
         setEditingFixed(null)
         setFixedForm({ name: '', amount: '', icon: '📌' })
+        setShowAddFixedForm(false)
       } catch (e) {
         console.error('Error saving fixed expense:', e)
         alert('Error al guardar')
@@ -936,9 +937,24 @@ export default function App() {
       if (!confirm('¿Eliminar este gasto fijo?')) return
       try {
         await db.deleteFixedExpense(id)
-        setFixedExpenses(await db.getFixedExpenses())
+        setFixedExpenses(await db.getFixedExpenses(month))
       } catch (e) {
         console.error('Error deleting:', e)
+      }
+    }
+    
+    const copyFromPreviousMonth = async () => {
+      try {
+        const result = await db.copyFixedExpensesFromPreviousMonth(month)
+        if (result.copied > 0) {
+          setFixedExpenses(await db.getFixedExpenses(month))
+          alert(result.message)
+        } else {
+          alert(result.message)
+        }
+      } catch (e) {
+        console.error('Error copying:', e)
+        alert('Error al copiar gastos fijos')
       }
     }
     
@@ -1003,22 +1019,38 @@ export default function App() {
                 <div>
                   <div className="flex justify-between items-center mb-2">
                     <p className="text-xs text-muted-foreground font-semibold">📌 OTROS GASTOS FIJOS</p>
-                    <Button size="sm" variant="ghost" className="h-6 text-xs" onClick={() => {
-                      setEditingFixed(null)
-                      setFixedForm({ name: '', amount: '', icon: '📌' })
-                    }}>
-                      <Plus className="h-3 w-3 mr-1" />Agregar
-                    </Button>
+                    <div className="flex gap-1">
+                      {fixedExpenses.length === 0 && (
+                        <Button size="sm" variant="ghost" className="h-6 text-xs" onClick={copyFromPreviousMonth}>
+                          <Copy className="h-3 w-3 mr-1" />Copiar mes ant.
+                        </Button>
+                      )}
+                      <Button size="sm" variant="ghost" className="h-6 text-xs" onClick={() => {
+                        setShowAddFixedForm(true)
+                        setEditingFixed(null)
+                        setFixedForm({ name: '', amount: '', icon: '📌' })
+                      }}>
+                        <Plus className="h-3 w-3 mr-1" />Agregar
+                      </Button>
+                    </div>
                   </div>
                   
-                  {/* Form para agregar/editar */}
-                  {(editingFixed !== null || fixedForm.name !== '' || fixedExpenses.length === 0) && !editingFixed && (
+                  {/* Mensaje si no hay gastos fijos */}
+                  {fixedExpenses.length === 0 && !showAddFixedForm && (
+                    <p className="text-xs text-muted-foreground text-center py-2">
+                      Sin gastos fijos para {formatMonth(month)}
+                    </p>
+                  )}
+                  
+                  {/* Form para agregar */}
+                  {showAddFixedForm && !editingFixed && (
                     <div className="flex gap-2 mb-2">
                       <Input 
                         placeholder="Nombre..." 
                         value={fixedForm.name} 
                         onChange={e => setFixedForm(f => ({ ...f, name: e.target.value }))}
                         className="h-8 text-sm flex-1"
+                        autoFocus
                       />
                       <NumericInput 
                         placeholder="Monto" 
@@ -1028,6 +1060,9 @@ export default function App() {
                       />
                       <Button size="sm" className="h-8" onClick={saveFixedExpense} disabled={!fixedForm.name}>
                         <Check className="h-4 w-4" />
+                      </Button>
+                      <Button size="sm" variant="ghost" className="h-8" onClick={() => setShowAddFixedForm(false)}>
+                        ✕
                       </Button>
                     </div>
                   )}
@@ -1049,6 +1084,9 @@ export default function App() {
                           <Button size="sm" className="h-7" onClick={saveFixedExpense}>
                             <Check className="h-3 w-3" />
                           </Button>
+                          <Button size="sm" variant="ghost" className="h-7" onClick={() => setEditingFixed(null)}>
+                            ✕
+                          </Button>
                         </div>
                       ) : (
                         <>
@@ -1063,6 +1101,7 @@ export default function App() {
                                 variant="ghost" 
                                 className="h-6 w-6 p-0"
                                 onClick={() => {
+                                  setShowAddFixedForm(false)
                                   setEditingFixed(fe)
                                   setFixedForm({ name: fe.name, amount: fe.amount?.toString() || '', icon: fe.icon })
                                 }}
