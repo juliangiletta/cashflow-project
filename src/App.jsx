@@ -1200,10 +1200,7 @@ export default function App() {
       <div className="space-y-4">
         <Card>
           <CardHeader className="pb-2">
-            <div className="flex justify-between items-center">
-              <CardTitle className="text-base">Período</CardTitle>
-              <Select value={month} onValueChange={setMonth}><SelectTrigger className="w-40"><SelectValue /></SelectTrigger><SelectContent>{getMonthOptions().map(m => <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>)}</SelectContent></Select>
-            </div>
+            <CardTitle className="text-base">📊 Resumen del mes</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-2 gap-2">
@@ -1237,10 +1234,7 @@ export default function App() {
     <div className="space-y-4">
       <Card>
         <CardHeader className="pb-2">
-          <div className="flex justify-between items-center">
-            <CardTitle className="text-base">💳 Tarjetas</CardTitle>
-            <Select value={month} onValueChange={setMonth}><SelectTrigger className="w-40"><SelectValue /></SelectTrigger><SelectContent>{getMonthOptions().map(m => <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>)}</SelectContent></Select>
-          </div>
+          <CardTitle className="text-base">💳 Tarjetas</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-2 gap-2">
@@ -1638,10 +1632,7 @@ export default function App() {
       <div className="space-y-4">
         <Card>
           <CardHeader className="pb-2">
-            <div className="flex justify-between items-center">
-              <CardTitle className="text-base">🏠 Gastos Depto</CardTitle>
-              <Select value={month} onValueChange={setMonth}><SelectTrigger className="w-40"><SelectValue /></SelectTrigger><SelectContent>{getMonthOptions().map(m => <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>)}</SelectContent></Select>
-            </div>
+            <CardTitle className="text-base">🏠 Gastos Depto</CardTitle>
           </CardHeader>
           <CardContent><div className="bg-blue-500/20 rounded-lg p-4 text-center"><p className="text-xs text-blue-400">Total Gastos</p><p className="text-2xl font-bold text-blue-400">{formatCurrency(totalAptExp)}</p></div></CardContent>
         </Card>
@@ -1947,7 +1938,18 @@ export default function App() {
       <header className="sticky top-0 z-40 bg-background/95 backdrop-blur border-b border-border">
         <div className="max-w-lg mx-auto px-4 py-3 flex justify-between items-center">
           <h1 className="text-lg font-bold flex items-center gap-2"><PiggyBank className="h-6 w-6 text-primary" />Cash Flow</h1>
-          <div className="flex gap-2">
+          <div className="flex gap-2 items-center">
+            <Select value={month} onValueChange={setMonth}>
+              <SelectTrigger className="w-32 h-9">
+                <Calendar className="h-4 w-4 mr-1 text-muted-foreground" />
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {getMonthOptions().map(m => (
+                  <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             <Button variant="outline" size="icon" onClick={refreshData} title="Actualizar datos">
               <RefreshCw className="h-4 w-4" />
             </Button>
