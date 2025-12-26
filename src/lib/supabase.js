@@ -777,3 +777,49 @@ export async function deleteInvestment(id) {
     throw error
   }
 }
+
+
+// ============================================
+// FIXED EXPENSES (Gastos Fijos)
+// ============================================
+export async function getFixedExpenses() {
+  const { data, error } = await supabase
+    .from('fixed_expenses')
+    .select('*')
+    .eq('is_active', true)
+    .order('sort_order')
+  if (error) { console.error('Error getFixedExpenses:', error); return [] }
+  return data || []
+}
+
+export async function createFixedExpense(expense) {
+  const { data, error } = await supabase
+    .from('fixed_expenses')
+    .insert([{
+      name: expense.name,
+      amount: parseFloat(expense.amount) || 0,
+      currency: expense.currency || 'ARS',
+      icon: expense.icon || '📌',
+      sort_order: expense.sort_order || 99
+    }])
+    .select()
+    .single()
+  if (error) throw error
+  return data
+}
+
+export async function updateFixedExpense(id, updates) {
+  const { error } = await supabase
+    .from('fixed_expenses')
+    .update(updates)
+    .eq('id', id)
+  if (error) throw error
+}
+
+export async function deleteFixedExpense(id) {
+  const { error } = await supabase
+    .from('fixed_expenses')
+    .delete()
+    .eq('id', id)
+  if (error) throw error
+}

@@ -523,6 +523,7 @@ export default function App() {
   const [aptExpenses, setAptExpenses] = useState([])
   const [salaryHistory, setSalaryHistory] = useState([])
   const [investments, setInvestments] = useState([])
+  const [fixedExpenses, setFixedExpenses] = useState([])
   const [month, setMonth] = useState(getCurrentMonth())
   const [currency, setCurrency] = useState('ARS')
   const [filters, setFilters] = useState({ type: 'all', currency: 'all', walletId: 'all', categoryId: 'all' })
@@ -551,13 +552,14 @@ export default function App() {
   const loadData = async () => {
     try {
       setLoading(true)
-      const [w, cat, med, cards, d, ac, sh, inv] = await Promise.all([
+      const [w, cat, med, cards, d, ac, sh, inv, fe] = await Promise.all([
         db.getWallets(), db.getCategories(), db.getMedicalRecords(), db.getCreditCards(), 
-        db.getDebtsByPerson(), db.getApartmentConfig(), db.getSalaryHistory(), db.getInvestments()
+        db.getDebtsByPerson(), db.getApartmentConfig(), db.getSalaryHistory(), db.getInvestments(),
+        db.getFixedExpenses()
       ])
       setWallets(w); setCategories(cat); setMedicalRecords(med)
       setCreditCards(cards); setDebts(d); setAptConfig(ac)
-      setSalaryHistory(sh); setInvestments(inv)
+      setSalaryHistory(sh); setInvestments(inv); setFixedExpenses(fe)
       await loadMonthly()
     } catch (e) { console.error('Error loading data:', e) } 
     finally { setLoading(false) }
@@ -779,42 +781,248 @@ export default function App() {
   // SECTIONS
   // ============================================
   
-  const Dashboard = () => (
-    <div className="space-y-4">
-      <Tabs value={currency} onValueChange={setCurrency}>
-        <TabsList className="grid w-full grid-cols-2">
-          <TabsTrigger value="ARS">🇦🇷 Pesos</TabsTrigger>
-          <TabsTrigger value="USD">🇺🇸 Dólares</TabsTrigger>
-        </TabsList>
-      </Tabs>
-      <div className="grid grid-cols-2 gap-3">
-        <StatCard title="Balance" value={formatCurrency(currency === 'ARS' ? totalArs : totalUsd, currency)} icon={Wallet} variant="primary" />
-        <StatCard title="Invertido" value={formatCurrency(currency === 'ARS' ? totalInvArs : totalInvUsd, currency)} icon={TrendingUp} variant="purple" />
-        <StatCard title="Ingresos" value={formatCurrency(currency === 'ARS' ? summary.income_ars : summary.income_usd, currency)} icon={ArrowUpRight} variant="success" />
-        <StatCard title="Tarjetas" value={formatCurrency(currency === 'ARS' ? totalCardArs : totalCardUsd, currency)} icon={CreditCard} variant="danger" />
-      </div>
-      <Card>
-        <CardHeader><CardTitle className="text-base">💰 Billeteras</CardTitle></CardHeader>
-        <CardContent>
-          <div className="space-y-2">
-            {wallets.filter(w => w.currency === currency).map(w => (
-              <div key={w.id} className="flex justify-between items-center p-3 bg-muted/50 rounded-lg">
-                <span className="text-sm">{w.icon} {w.name}</span>
-                <span className="font-semibold">{formatCurrency(w.balance, currency)}</span>
+  const Dashboard = () => {
+    const [showFixedExpenses, setShowFixedExpenses] = useState(false)
+    const [editingFixed, setEditingFixed] = useState(null)
+    const [fixedForm, setFixedForm] = useState({ name: '', amount: '', icon: '📌' })
+    
+    // Calcular mi parte del depto
+    const myName = 'Julian' // Tu nombre en apartment_config
+    const getSal = n => aptSalaries.find(s => s.person_name === n)?.salary || 0
+    const myShare = aptConfig.length > 0 ? (() => {
+      const mySalary = getSal(myName)
+      const totalSalaries = aptConfig.reduce((sum, p) => sum + getSal(p.person_name), 0)
+      const sharePercent = totalSalaries > 0 ? (mySalary / totalSalaries) * 100 : (aptConfig.find(p => p.person_name === myName)?.percentage || 50)
+      return (sharePercent / 100) * totalAptExp
+    })() : 0
+    
+    // Gastos fijos totales
+    const fixedExpensesTotal = fixedExpenses.reduce((sum, fe) => sum + (parseFloat(fe.amount) || 0), 0)
+    const totalGastosFijos = totalCardArs + fixedExpensesTotal + myShare
+    
+    const saveFixedExpense = async () => {
+      try {
+        if (editingFixed) {
+          await db.updateFixedExpense(editingFixed.id, {
+            name: fixedForm.name,
+            amount: parseFloat(fixedForm.amount) || 0,
+            icon: fixedForm.icon
+          })
+        } else {
+          await db.createFixedExpense(fixedForm)
+        }
+        setFixedExpenses(await db.getFixedExpenses())
+        setEditingFixed(null)
+        setFixedForm({ name: '', amount: '', icon: '📌' })
+      } catch (e) {
+        console.error('Error saving fixed expense:', e)
+        alert('Error al guardar')
+      }
+    }
+    
+    const deleteFixed = async (id) => {
+      if (!confirm('¿Eliminar este gasto fijo?')) return
+      try {
+        await db.deleteFixedExpense(id)
+        setFixedExpenses(await db.getFixedExpenses())
+      } catch (e) {
+        console.error('Error deleting:', e)
+      }
+    }
+    
+    return (
+      <div className="space-y-4">
+        <Tabs value={currency} onValueChange={setCurrency}>
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="ARS">🇦🇷 Pesos</TabsTrigger>
+            <TabsTrigger value="USD">🇺🇸 Dólares</TabsTrigger>
+          </TabsList>
+        </Tabs>
+        <div className="grid grid-cols-2 gap-3">
+          <StatCard title="Balance" value={formatCurrency(currency === 'ARS' ? totalArs : totalUsd, currency)} icon={Wallet} variant="primary" />
+          <StatCard title="Invertido" value={formatCurrency(currency === 'ARS' ? totalInvArs : totalInvUsd, currency)} icon={TrendingUp} variant="purple" />
+          <StatCard title="Ingresos" value={formatCurrency(currency === 'ARS' ? summary.income_ars : summary.income_usd, currency)} icon={ArrowUpRight} variant="success" />
+          <StatCard title="Gastos Fijos" value={formatCurrency(totalGastosFijos)} icon={CreditCard} variant="danger" />
+        </div>
+        
+        {/* SECCIÓN GASTOS FIJOS */}
+        <Card>
+          <CardHeader className="pb-2">
+            <div className="flex justify-between items-center">
+              <CardTitle className="text-base">📋 Gastos Fijos del Mes</CardTitle>
+              <Button size="sm" variant="outline" onClick={() => setShowFixedExpenses(!showFixedExpenses)}>
+                {showFixedExpenses ? 'Ocultar' : 'Ver detalle'}
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {/* Resumen rápido */}
+            <div className="grid grid-cols-3 gap-2 mb-3">
+              <div className="bg-red-500/20 rounded-lg p-2 text-center">
+                <p className="text-xs text-red-400">Tarjetas</p>
+                <p className="font-bold text-red-400 text-sm">{formatCurrency(totalCardArs)}</p>
               </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
-      <Card>
-        <CardHeader><CardTitle className="text-base">Últimos Movimientos</CardTitle></CardHeader>
-        <CardContent>
-          {transactions.slice(0, 5).map(tx => <TransactionItem key={tx.id} tx={tx} />)}
-          {!transactions.length && <p className="text-center text-muted-foreground py-4">Sin movimientos</p>}
-        </CardContent>
-      </Card>
-    </div>
-  )
+              <div className="bg-orange-500/20 rounded-lg p-2 text-center">
+                <p className="text-xs text-orange-400">Otros Fijos</p>
+                <p className="font-bold text-orange-400 text-sm">{formatCurrency(fixedExpensesTotal)}</p>
+              </div>
+              <div className="bg-blue-500/20 rounded-lg p-2 text-center">
+                <p className="text-xs text-blue-400">Mi Depto</p>
+                <p className="font-bold text-blue-400 text-sm">{formatCurrency(myShare)}</p>
+              </div>
+            </div>
+            
+            {showFixedExpenses && (
+              <div className="space-y-3 border-t border-border pt-3">
+                {/* Tarjetas de crédito */}
+                <div>
+                  <p className="text-xs text-muted-foreground font-semibold mb-2">💳 TARJETAS</p>
+                  {cardsByCard.map(card => (
+                    <div key={card.id} className="flex justify-between items-center py-1.5 border-b border-border/50 last:border-0">
+                      <span className="text-sm">{card.icon} {card.name}</span>
+                      <span className={cn('font-medium text-sm', card.totalArs > 0 ? 'text-red-400' : 'text-muted-foreground')}>
+                        {card.totalArs > 0 ? formatCurrency(card.totalArs) : '$0'}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+                
+                {/* Gastos fijos personalizados */}
+                <div>
+                  <div className="flex justify-between items-center mb-2">
+                    <p className="text-xs text-muted-foreground font-semibold">📌 OTROS GASTOS FIJOS</p>
+                    <Button size="sm" variant="ghost" className="h-6 text-xs" onClick={() => {
+                      setEditingFixed(null)
+                      setFixedForm({ name: '', amount: '', icon: '📌' })
+                    }}>
+                      <Plus className="h-3 w-3 mr-1" />Agregar
+                    </Button>
+                  </div>
+                  
+                  {/* Form para agregar/editar */}
+                  {(editingFixed !== null || fixedForm.name !== '' || fixedExpenses.length === 0) && !editingFixed && (
+                    <div className="flex gap-2 mb-2">
+                      <Input 
+                        placeholder="Nombre..." 
+                        value={fixedForm.name} 
+                        onChange={e => setFixedForm(f => ({ ...f, name: e.target.value }))}
+                        className="h-8 text-sm flex-1"
+                      />
+                      <Input 
+                        type="number" 
+                        placeholder="Monto" 
+                        value={fixedForm.amount} 
+                        onChange={e => setFixedForm(f => ({ ...f, amount: e.target.value }))}
+                        className="h-8 text-sm w-24"
+                      />
+                      <Button size="sm" className="h-8" onClick={saveFixedExpense} disabled={!fixedForm.name}>
+                        <Check className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  )}
+                  
+                  {fixedExpenses.map(fe => (
+                    <div key={fe.id} className="flex justify-between items-center py-1.5 border-b border-border/50 last:border-0 group">
+                      {editingFixed?.id === fe.id ? (
+                        <div className="flex gap-2 flex-1">
+                          <Input 
+                            value={fixedForm.name} 
+                            onChange={e => setFixedForm(f => ({ ...f, name: e.target.value }))}
+                            className="h-7 text-sm flex-1"
+                          />
+                          <Input 
+                            type="number" 
+                            value={fixedForm.amount} 
+                            onChange={e => setFixedForm(f => ({ ...f, amount: e.target.value }))}
+                            className="h-7 text-sm w-24"
+                          />
+                          <Button size="sm" className="h-7" onClick={saveFixedExpense}>
+                            <Check className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      ) : (
+                        <>
+                          <span className="text-sm">{fe.icon} {fe.name}</span>
+                          <div className="flex items-center gap-2">
+                            <span className={cn('font-medium text-sm', fe.amount > 0 ? 'text-orange-400' : 'text-muted-foreground')}>
+                              {formatCurrency(fe.amount)}
+                            </span>
+                            <div className="opacity-0 group-hover:opacity-100 flex gap-1">
+                              <Button 
+                                size="sm" 
+                                variant="ghost" 
+                                className="h-6 w-6 p-0"
+                                onClick={() => {
+                                  setEditingFixed(fe)
+                                  setFixedForm({ name: fe.name, amount: fe.amount?.toString() || '', icon: fe.icon })
+                                }}
+                              >
+                                ✏️
+                              </Button>
+                              <Button 
+                                size="sm" 
+                                variant="ghost" 
+                                className="h-6 w-6 p-0 text-red-400"
+                                onClick={() => deleteFixed(fe.id)}
+                              >
+                                <Trash2 className="h-3 w-3" />
+                              </Button>
+                            </div>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  ))}
+                </div>
+                
+                {/* Mi parte del depto */}
+                <div>
+                  <p className="text-xs text-muted-foreground font-semibold mb-2">🏠 MI PARTE DEL DEPTO</p>
+                  <div className="flex justify-between items-center py-1.5">
+                    <span className="text-sm">Alquiler + Expensas + Servicios</span>
+                    <span className="font-medium text-sm text-blue-400">{formatCurrency(myShare)}</span>
+                  </div>
+                  {totalAptExp === 0 && (
+                    <p className="text-xs text-yellow-400">⚠️ Cargá los gastos del depto para ver tu parte</p>
+                  )}
+                </div>
+                
+                {/* TOTAL */}
+                <div className="border-t-2 border-border pt-2 mt-2">
+                  <div className="flex justify-between items-center">
+                    <span className="font-bold">TOTAL GASTOS FIJOS</span>
+                    <span className="font-bold text-lg text-red-400">{formatCurrency(totalGastosFijos)}</span>
+                  </div>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+        
+        <Card>
+          <CardHeader><CardTitle className="text-base">💰 Billeteras</CardTitle></CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {wallets.filter(w => w.currency === currency).map(w => (
+                <div key={w.id} className="flex justify-between items-center p-3 bg-muted/50 rounded-lg">
+                  <span className="text-sm">{w.icon} {w.name}</span>
+                  <span className="font-semibold">{formatCurrency(w.balance, currency)}</span>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+        
+        <Card>
+          <CardHeader><CardTitle className="text-base">Últimos Movimientos</CardTitle></CardHeader>
+          <CardContent>
+            {transactions.slice(0, 5).map(tx => <TransactionItem key={tx.id} tx={tx} />)}
+            {!transactions.length && <p className="text-center text-muted-foreground py-4">Sin movimientos</p>}
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
 
   const Transactions = () => {
     const apply = async (f) => { setFilters(f); setTransactions(await db.getTransactions({ month, ...f }) || []) }
