@@ -1574,16 +1574,25 @@ export default function App() {
   const Apartment = () => {
     const [editing, setEditing] = useState(null), [val, setVal] = useState('')
     const getSal = n => aptSalaries.find(s => s.person_name === n)?.salary || 0
+    
+    // Calcular pagos recibidos de otros (en sistema de 2 personas)
+    const totalPayments = aptExpenses.filter(e => e.is_payment).reduce((s, e) => s + +e.amount, 0)
+    
     const shares = aptConfig.map(p => { 
       const sal = getSal(p.person_name)
       const share = totalAptSal > 0 ? (sal / totalAptSal) * 100 : p.percentage
       const owes = (share / 100) * totalAptExp
-      // Solo contar gastos reales, no pagos
+      // Gastos reales que pagó esta persona
       const paidExpenses = aptExpenses.filter(e => e.paid_by === p.person_name && !e.is_payment).reduce((s, e) => s + +e.amount, 0)
-      const payments = aptExpenses.filter(e => e.paid_by === p.person_name && e.is_payment).reduce((s, e) => s + +e.amount, 0)
-      // Balance = lo que pagó de gastos + pagos que hizo - lo que debe
-      const balance = paidExpenses + payments - owes
-      return { ...p, sal, share, owes, paidExpenses, payments, balance } 
+      // Pagos/ajustes que hizo esta persona a otros
+      const paymentsMade = aptExpenses.filter(e => e.paid_by === p.person_name && e.is_payment).reduce((s, e) => s + +e.amount, 0)
+      // Pagos recibidos de otros (total de pagos - lo que esta persona pagó)
+      const paymentsReceived = totalPayments - paymentsMade
+      
+      // Balance = (gastos que pagué + pagos que hice - pagos que recibí) - lo que debo
+      const balance = (paidExpenses + paymentsMade - paymentsReceived) - owes
+      
+      return { ...p, sal, share, owes, paidExpenses, paymentsMade, paymentsReceived, balance } 
     })
     
     return (
@@ -1649,19 +1658,26 @@ export default function App() {
         <Card>
           <CardHeader><CardTitle className="text-base">📊 Distribución</CardTitle></CardHeader>
           <CardContent>
-            {shares.map(p => (
-              <div key={p.id} className={cn('p-3 rounded-lg mb-2', p.balance >= 0 ? 'bg-emerald-500/20' : 'bg-red-500/20')}>
-                <div className="flex justify-between mb-1">
-                  <span className="font-medium">{p.person_name}</span>
-                  <Badge className={p.balance >= 0 ? 'bg-emerald-500' : 'bg-red-500'}>{p.share.toFixed(0)}%</Badge>
+            {shares.map(p => {
+              const isBalanced = Math.abs(p.balance) < 1
+              const colorClass = isBalanced ? 'bg-blue-500/20' : p.balance > 0 ? 'bg-emerald-500/20' : 'bg-red-500/20'
+              const badgeClass = isBalanced ? 'bg-blue-500' : p.balance > 0 ? 'bg-emerald-500' : 'bg-red-500'
+              return (
+                <div key={p.id} className={cn('p-3 rounded-lg mb-2', colorClass)}>
+                  <div className="flex justify-between mb-1">
+                    <span className="font-medium">{p.person_name}</span>
+                    <Badge className={badgeClass}>{p.share.toFixed(0)}%</Badge>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 text-xs">
+                    <div>Debe: <span className="font-medium">{formatCurrency(p.owes)}</span></div>
+                    <div>Pagó: <span className="font-medium">{formatCurrency(p.paidExpenses + p.paymentsMade)}</span></div>
+                    <div>Saldo: <span className={cn('font-bold', isBalanced ? 'text-blue-400' : p.balance > 0 ? 'text-emerald-400' : 'text-red-400')}>
+                      {isBalanced ? '$0' : `${p.balance > 0 ? '+' : ''}${formatCurrency(p.balance)}`}
+                    </span></div>
+                  </div>
                 </div>
-                <div className="grid grid-cols-3 gap-2 text-xs">
-                  <div>Debe: <span className="font-medium">{formatCurrency(p.owes)}</span></div>
-                  <div>Pagó: <span className="font-medium">{formatCurrency(p.paidExpenses + p.payments)}</span></div>
-                  <div>Saldo: <span className={cn('font-bold', p.balance >= 0 ? 'text-emerald-400' : 'text-red-400')}>{p.balance >= 0 ? '+' : ''}{formatCurrency(p.balance)}</span></div>
-                </div>
-              </div>
-            ))}
+              )
+            })}
             {totalAptSal === 0 && (
               <p className="text-center text-yellow-400 text-sm py-2">
                 ⚠️ Cargá los sueldos para calcular la distribución proporcional
