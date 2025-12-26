@@ -152,15 +152,17 @@ const StatCard = ({ title, value, subtitle, icon: Icon, variant = 'default' }) =
     purple: 'bg-gradient-to-br from-purple-600 to-purple-700 text-white border-0' 
   }
   return (
-    <Card className={cn(v[variant], 'shadow-lg')}>
-      <CardContent className="p-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className={cn('text-xs font-medium', variant === 'default' ? 'text-muted-foreground' : 'text-white/80')}>{title}</p>
-            <p className="text-xl font-bold mt-1">{value}</p>
-            {subtitle && <p className={cn('text-xs mt-0.5', variant === 'default' ? 'text-muted-foreground' : 'text-white/70')}>{subtitle}</p>}
+    <Card className={cn(v[variant], 'shadow-lg overflow-hidden')}>
+      <CardContent className="p-3 relative">
+        {Icon && (
+          <div className={cn('absolute top-2 right-2 p-1.5 rounded-full opacity-60', variant === 'default' ? 'bg-muted' : 'bg-white/20')}>
+            <Icon className="h-4 w-4" />
           </div>
-          {Icon && <div className={cn('p-2 rounded-full', variant === 'default' ? 'bg-muted' : 'bg-white/20')}><Icon className="h-5 w-5" /></div>}
+        )}
+        <div className="pr-8">
+          <p className={cn('text-xs font-medium', variant === 'default' ? 'text-muted-foreground' : 'text-white/80')}>{title}</p>
+          <p className="text-lg font-bold mt-1 truncate">{value}</p>
+          {subtitle && <p className={cn('text-xs mt-0.5 truncate', variant === 'default' ? 'text-muted-foreground' : 'text-white/70')}>{subtitle}</p>}
         </div>
       </CardContent>
     </Card>
@@ -883,7 +885,8 @@ export default function App() {
     const [fixedForm, setFixedForm] = useState({ name: '', amount: '', icon: '📌' })
     
     // Calcular mi parte del depto
-    const myName = 'Julian' // Tu nombre en apartment_config
+    const myName = 'Julian'
+    const partnerName = 'Bren'
     const getSal = n => aptSalaries.find(s => s.person_name === n)?.salary || 0
     const myShare = aptConfig.length > 0 ? (() => {
       const mySalary = getSal(myName)
@@ -891,6 +894,18 @@ export default function App() {
       const sharePercent = totalSalaries > 0 ? (mySalary / totalSalaries) * 100 : (aptConfig.find(p => p.person_name === myName)?.percentage || 50)
       return (sharePercent / 100) * totalAptExp
     })() : 0
+    
+    // Lo que Bren debe del depto
+    const partnerShare = aptConfig.length > 0 ? (() => {
+      const partnerSalary = getSal(partnerName)
+      const totalSalaries = aptConfig.reduce((sum, p) => sum + getSal(p.person_name), 0)
+      const sharePercent = totalSalaries > 0 ? (partnerSalary / totalSalaries) * 100 : (aptConfig.find(p => p.person_name === partnerName)?.percentage || 50)
+      return (sharePercent / 100) * totalAptExp
+    })() : 0
+    
+    // Lo que Bren pagó este mes
+    const partnerPaid = aptExpenses.filter(e => e.paid_by === partnerName).reduce((s, e) => s + (+e.amount || 0), 0)
+    const partnerOwesMe = partnerShare - partnerPaid
     
     // Gastos fijos totales
     const fixedExpensesTotal = fixedExpenses.reduce((sum, fe) => sum + (parseFloat(fe.amount) || 0), 0)
@@ -1081,6 +1096,20 @@ export default function App() {
                   )}
                 </div>
                 
+                {/* Deuda de Bren */}
+                {partnerOwesMe > 0 && (
+                  <div>
+                    <p className="text-xs text-muted-foreground font-semibold mb-2">💰 BREN ME DEBE</p>
+                    <div className="flex justify-between items-center py-1.5 bg-emerald-500/10 rounded-lg px-2">
+                      <span className="text-sm">Parte del depto ({formatMonth(month)})</span>
+                      <span className="font-bold text-sm text-emerald-400">{formatCurrency(partnerOwesMe)}</span>
+                    </div>
+                  </div>
+                )}
+                    <p className="text-xs text-yellow-400">⚠️ Cargá los gastos del depto para ver tu parte</p>
+                  )}
+                </div>
+                
                 {/* TOTAL */}
                 <div className="border-t-2 border-border pt-2 mt-2">
                   <div className="flex justify-between items-center">
@@ -1216,6 +1245,18 @@ export default function App() {
     const arsWallets = wallets.filter(w => w.currency === 'ARS')
     const usdWallets = wallets.filter(w => w.currency === 'USD')
     
+    // Calcular deuda de Bren del depto
+    const partnerName = 'Bren'
+    const getSal = n => aptSalaries.find(s => s.person_name === n)?.salary || 0
+    const partnerShare = aptConfig.length > 0 ? (() => {
+      const partnerSalary = getSal(partnerName)
+      const totalSalaries = aptConfig.reduce((sum, p) => sum + getSal(p.person_name), 0)
+      const sharePercent = totalSalaries > 0 ? (partnerSalary / totalSalaries) * 100 : (aptConfig.find(p => p.person_name === partnerName)?.percentage || 50)
+      return (sharePercent / 100) * totalAptExp
+    })() : 0
+    const partnerPaid = aptExpenses.filter(e => e.paid_by === partnerName).reduce((s, e) => s + (+e.amount || 0), 0)
+    const brenOwesMe = partnerShare - partnerPaid
+    
     // State for pending payments
     const [pendingPayments, setPendingPayments] = useState({})
     
@@ -1269,7 +1310,7 @@ export default function App() {
           </CardHeader>
         </Card>
         
-        {!debts.length ? (
+        {!debts.length && brenOwesMe <= 0 ? (
           <Card>
             <CardContent className="py-8 text-center">
               <Check className="h-12 w-12 mx-auto text-emerald-500 mb-2" />
@@ -1277,7 +1318,33 @@ export default function App() {
               <Button variant="link" onClick={() => setModals(m => ({ ...m, debt: true }))}>Agregar una deuda</Button>
             </CardContent>
           </Card>
-        ) : debts.map(p => (
+        ) : (
+          <>
+            {/* Deuda de Bren del depto */}
+            {brenOwesMe > 0 && (
+              <Card className="border-emerald-500/50 bg-emerald-500/5">
+                <CardContent className="p-4">
+                  <div className="flex justify-between items-center">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-full bg-emerald-500/20 flex items-center justify-center">
+                        <Building2 className="h-5 w-5 text-emerald-500" />
+                      </div>
+                      <div>
+                        <p className="font-semibold">Bren - Depto</p>
+                        <p className="text-xs text-muted-foreground">{formatMonth(month)}</p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-bold text-lg text-emerald-400">{formatCurrency(brenOwesMe)}</p>
+                      <p className="text-xs text-muted-foreground">parte del depto</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+            
+            {/* Otras deudas */}
+            {debts.map(p => (
           <Card key={p.name} className="cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => { setSelectedDebt(p); setModals(m => ({ ...m, debtDetail: true })); setPendingPayments({}) }}>
             <CardContent className="p-4">
               <div className="flex justify-between items-center">
@@ -1295,6 +1362,8 @@ export default function App() {
             </CardContent>
           </Card>
         ))}
+          </>
+        )}
         
         {/* Dialog detalle - UPDATED with confirm button */}
         <Dialog open={modals.debtDetail} onOpenChange={o => setModals(m => ({ ...m, debtDetail: o }))}>
