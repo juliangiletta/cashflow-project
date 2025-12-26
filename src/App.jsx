@@ -1247,27 +1247,39 @@ export default function App() {
     const partnerName = 'Bren'
     const getSal = n => aptSalaries.find(s => s.person_name === n)?.salary || 0
     
-    // Calcular porcentajes basados en sueldos o default 50/50
     const mySalary = getSal(myName)
     const partnerSalary = getSal(partnerName)
     const totalSalaries = mySalary + partnerSalary
     
-    // Si hay sueldos, usar proporción; si no, usar 50/50
     const partnerPercent = totalSalaries > 0 
       ? (partnerSalary / totalSalaries) * 100 
       : (aptConfig.find(p => p.person_name === partnerName)?.percentage || 50)
     
-    // Lo que Bren debe pagar del total
     const partnerShare = (partnerPercent / 100) * totalAptExp
-    
-    // Lo que Bren ya pagó
     const partnerPaid = aptExpenses.filter(e => e.paid_by === partnerName).reduce((s, e) => s + (+e.amount || 0), 0)
+    const brenDeptoDebt = partnerShare - partnerPaid
     
-    // Lo que me debe
-    const brenOwesMe = partnerShare - partnerPaid
+    // Combinar deudas: agregar Bren con su deuda del depto si existe
+    const allDebts = [...debts]
+    const brenInDebts = allDebts.find(d => d.name === partnerName)
     
-    // Debug
-    console.log('Deuda Bren:', { totalAptExp, partnerPercent, partnerShare, partnerPaid, brenOwesMe, aptConfig, aptSalaries })
+    if (brenDeptoDebt > 0) {
+      if (brenInDebts) {
+        // Agregar deuda del depto a Bren existente
+        brenInDebts.deptoDebt = brenDeptoDebt
+        brenInDebts.total_pending_ars = (brenInDebts.total_pending_ars || 0) + brenDeptoDebt
+      } else {
+        // Crear entrada para Bren solo con deuda del depto
+        allDebts.unshift({
+          name: partnerName,
+          installments: [],
+          manualDebts: [],
+          deptoDebt: brenDeptoDebt,
+          total_pending_ars: brenDeptoDebt,
+          total_pending_usd: 0
+        })
+      }
+    }
     
     // State for pending payments
     const [pendingPayments, setPendingPayments] = useState({})
@@ -1322,7 +1334,7 @@ export default function App() {
           </CardHeader>
         </Card>
         
-        {!debts.length && totalAptExp === 0 ? (
+        {!allDebts.length ? (
           <Card>
             <CardContent className="py-8 text-center">
               <Check className="h-12 w-12 mx-auto text-emerald-500 mb-2" />
@@ -1332,92 +1344,108 @@ export default function App() {
           </Card>
         ) : (
           <>
-            {/* Deuda de Bren del depto - siempre mostrar si hay gastos */}
-            {totalAptExp > 0 && (
-              <Card className={cn(
-                "border-2",
-                brenOwesMe > 0 ? "border-emerald-500/50 bg-emerald-500/5" : "border-blue-500/50 bg-blue-500/5"
-              )}>
+            {allDebts.map(p => (
+              <Card 
+                key={p.name} 
+                className={cn(
+                  "cursor-pointer hover:bg-muted/50 transition-colors",
+                  p.name === partnerName && p.deptoDebt > 0 && "border-emerald-500/30"
+                )} 
+                onClick={() => { setSelectedDebt(p); setModals(m => ({ ...m, debtDetail: true })); setPendingPayments({}) }}
+              >
                 <CardContent className="p-4">
                   <div className="flex justify-between items-center">
-                    <div className="flex items-center gap-3">
-                      <div className={cn(
-                        "w-10 h-10 rounded-full flex items-center justify-center",
-                        brenOwesMe > 0 ? "bg-emerald-500/20" : "bg-blue-500/20"
-                      )}>
-                        <Building2 className={cn("h-5 w-5", brenOwesMe > 0 ? "text-emerald-500" : "text-blue-500")} />
-                      </div>
-                      <div>
-                        <p className="font-semibold">🏠 Bren - Depto</p>
-                        <p className="text-xs text-muted-foreground">{formatMonth(month)}</p>
-                      </div>
+                    <div>
+                      <p className="font-semibold">
+                        {p.name === partnerName ? '💑' : '👤'} {p.name}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {(p.installments?.filter(i => !i.is_paid).length || 0) + 
+                         (p.manualDebts?.filter(d => !d.is_paid).length || 0) + 
+                         (p.deptoDebt > 0 ? 1 : 0)} pendientes
+                      </p>
                     </div>
                     <div className="text-right">
-                      {brenOwesMe > 0 ? (
-                        <>
-                          <p className="font-bold text-lg text-emerald-400">{formatCurrency(brenOwesMe)}</p>
-                          <p className="text-xs text-muted-foreground">me debe</p>
-                        </>
-                      ) : brenOwesMe < 0 ? (
-                        <>
-                          <p className="font-bold text-lg text-red-400">{formatCurrency(Math.abs(brenOwesMe))}</p>
-                          <p className="text-xs text-muted-foreground">le debo yo</p>
-                        </>
-                      ) : (
-                        <>
-                          <p className="font-bold text-lg text-blue-400">$0</p>
-                          <p className="text-xs text-muted-foreground">estamos a mano</p>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                  <div className="mt-3 pt-3 border-t border-border grid grid-cols-3 gap-2 text-xs">
-                    <div className="text-center">
-                      <p className="text-muted-foreground">Total depto</p>
-                      <p className="font-semibold">{formatCurrency(totalAptExp)}</p>
-                    </div>
-                    <div className="text-center">
-                      <p className="text-muted-foreground">Debe ({partnerPercent.toFixed(0)}%)</p>
-                      <p className="font-semibold">{formatCurrency(partnerShare)}</p>
-                    </div>
-                    <div className="text-center">
-                      <p className="text-muted-foreground">Pagó</p>
-                      <p className="font-semibold">{formatCurrency(partnerPaid)}</p>
+                      {p.total_pending_ars > 0 && <p className="font-bold text-emerald-400">{formatCurrency(p.total_pending_ars)}</p>}
+                      {p.total_pending_usd > 0 && <p className="font-bold text-emerald-400">{formatCurrency(p.total_pending_usd, 'USD')}</p>}
                     </div>
                   </div>
                 </CardContent>
               </Card>
-            )}
-            
-            {/* Otras deudas */}
-            {debts.map(p => (
-          <Card key={p.name} className="cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => { setSelectedDebt(p); setModals(m => ({ ...m, debtDetail: true })); setPendingPayments({}) }}>
-            <CardContent className="p-4">
-              <div className="flex justify-between items-center">
-                <div>
-                  <p className="font-semibold">👤 {p.name}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {(p.installments?.filter(i => !i.is_paid).length || 0) + (p.manualDebts?.filter(d => !d.is_paid).length || 0)} pendientes
-                  </p>
-                </div>
-                <div className="text-right">
-                  {p.total_pending_ars > 0 && <p className="font-bold text-red-400">{formatCurrency(p.total_pending_ars)}</p>}
-                  {p.total_pending_usd > 0 && <p className="font-bold text-red-400">{formatCurrency(p.total_pending_usd, 'USD')}</p>}
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
+            ))}
           </>
         )}
         
         {/* Dialog detalle - UPDATED with confirm button */}
         <Dialog open={modals.debtDetail} onOpenChange={o => setModals(m => ({ ...m, debtDetail: o }))}>
           <DialogContent className="sm:max-w-md">
-            <DialogHeader><DialogTitle>👤 {selectedDebt?.name}</DialogTitle></DialogHeader>
+            <DialogHeader><DialogTitle>{selectedDebt?.name === partnerName ? '💑' : '👤'} {selectedDebt?.name}</DialogTitle></DialogHeader>
             <ScrollArea className="max-h-[60vh]">
               {selectedDebt && (
                 <div className="space-y-4">
+                  {/* Deuda del depto (solo para Bren) */}
+                  {selectedDebt.name === partnerName && selectedDebt.deptoDebt > 0 && (
+                    <div>
+                      <h4 className="text-sm font-semibold text-muted-foreground mb-2">🏠 Gastos del Depto - {formatMonth(month)}</h4>
+                      <div className="p-3 rounded-lg mb-2 bg-emerald-500/10 border border-emerald-500/30">
+                        <div className="flex justify-between mb-2">
+                          <div>
+                            <p className="font-medium text-sm">Parte del depto ({partnerPercent.toFixed(0)}%)</p>
+                            <p className="text-xs text-muted-foreground">
+                              Total: {formatCurrency(totalAptExp)} • Pagó: {formatCurrency(partnerPaid)}
+                            </p>
+                          </div>
+                          <p className="font-semibold text-emerald-400">{formatCurrency(selectedDebt.deptoDebt)}</p>
+                        </div>
+                        <div className="flex gap-2">
+                          <Select value={pendingPayments['depto'] || ''} onValueChange={v => setPaymentWallet('depto', v)}>
+                            <SelectTrigger className="h-8 flex-1">
+                              <SelectValue placeholder="Seleccionar billetera..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {arsWallets.map(w => (
+                                <SelectItem key={w.id} value={w.id}>{w.icon} {w.name}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <Button 
+                            size="sm" 
+                            className="bg-emerald-600 hover:bg-emerald-700"
+                            disabled={!pendingPayments['depto']}
+                            onClick={async () => {
+                              const walletId = pendingPayments['depto']
+                              if (!walletId) return
+                              // Crear transacción de ingreso (Bren me paga)
+                              await db.createTransaction({
+                                date: format(new Date(), 'yyyy-MM-dd'),
+                                description: `Pago depto ${formatMonth(month)} - ${partnerName}`,
+                                amount: selectedDebt.deptoDebt,
+                                currency: 'ARS',
+                                type: 'ingreso',
+                                wallet_id: walletId,
+                                category_id: categories.find(c => c.name === 'Devolución')?.id || categories.find(c => c.type === 'ingreso')?.id
+                              })
+                              // Registrar que Bren pagó su parte en apartment_expenses
+                              await db.createApartmentExpense({
+                                month,
+                                description: `Pago ${partnerName}`,
+                                amount: selectedDebt.deptoDebt,
+                                category: 'Pago',
+                                paid_by: partnerName
+                              })
+                              await loadData()
+                              await loadMonthly()
+                              setModals(m => ({ ...m, debtDetail: false }))
+                              setPendingPayments({})
+                            }}
+                          >
+                            <Check className="h-4 w-4 mr-1" /> Cobrar
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  
                   {/* Deudas manuales pendientes */}
                   {pendingManualDebts.length > 0 && (
                     <div>
