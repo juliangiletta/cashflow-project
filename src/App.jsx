@@ -848,7 +848,7 @@ export default function App() {
   const cardsByCard = creditCards.map(c => ({ ...c, expenses: cardExpenses.filter(e => e.card_id === c.id), totalArs: cardExpenses.filter(e => e.card_id === c.id && e.currency === 'ARS').reduce((s, e) => s + (+e.installment_amount || 0), 0), totalUsd: cardExpenses.filter(e => e.card_id === c.id && e.currency === 'USD').reduce((s, e) => s + (+e.installment_amount || 0), 0) }))
   const totalCardArs = cardsByCard.reduce((s, c) => s + c.totalArs, 0)
   const totalCardUsd = cardsByCard.reduce((s, c) => s + c.totalUsd, 0)
-  const totalAptExp = aptExpenses.reduce((s, e) => s + (+e.amount || 0), 0)
+  const totalAptExp = aptExpenses.filter(e => !e.is_payment).reduce((s, e) => s + (+e.amount || 0), 0)
   const totalAptSal = aptSalaries.reduce((s, e) => s + (+e.salary || 0), 0)
   const completed = medicalRecords.filter(r => r.status === 'completed')
   const weightData = completed.filter(r => r.weight).map(r => ({ date: format(parseISO(r.date), 'MM/yy'), weight: r.weight })).reverse()
@@ -903,9 +903,10 @@ export default function App() {
       return (sharePercent / 100) * totalAptExp
     })() : 0
     
-    // Lo que Bren pagó este mes
-    const partnerPaid = aptExpenses.filter(e => e.paid_by === partnerName).reduce((s, e) => s + (+e.amount || 0), 0)
-    const partnerOwesMe = partnerShare - partnerPaid
+    // Lo que Bren pagó: gastos reales que ella pagó + pagos que me hizo
+    const partnerPaidExpenses = aptExpenses.filter(e => e.paid_by === partnerName && !e.is_payment).reduce((s, e) => s + (+e.amount || 0), 0)
+    const partnerPayments = aptExpenses.filter(e => e.paid_by === partnerName && e.is_payment).reduce((s, e) => s + (+e.amount || 0), 0)
+    const partnerOwesMe = partnerShare - partnerPaidExpenses - partnerPayments
     
     // Gastos fijos totales
     const fixedExpensesTotal = fixedExpenses.reduce((sum, fe) => sum + (parseFloat(fe.amount) || 0), 0)
@@ -1256,8 +1257,10 @@ export default function App() {
       : (aptConfig.find(p => p.person_name === partnerName)?.percentage || 50)
     
     const partnerShare = (partnerPercent / 100) * totalAptExp
-    const partnerPaid = aptExpenses.filter(e => e.paid_by === partnerName).reduce((s, e) => s + (+e.amount || 0), 0)
-    const brenDeptoDebt = partnerShare - partnerPaid
+    // Gastos reales que Bren pagó + pagos que me hizo a mí
+    const partnerPaidExpenses = aptExpenses.filter(e => e.paid_by === partnerName && !e.is_payment).reduce((s, e) => s + (+e.amount || 0), 0)
+    const partnerPayments = aptExpenses.filter(e => e.paid_by === partnerName && e.is_payment).reduce((s, e) => s + (+e.amount || 0), 0)
+    const brenDeptoDebt = partnerShare - partnerPaidExpenses - partnerPayments
     
     // Combinar deudas: agregar Bren con su deuda del depto si existe
     const allDebts = [...debts]
@@ -1392,7 +1395,7 @@ export default function App() {
                           <div>
                             <p className="font-medium text-sm">Parte del depto ({partnerPercent.toFixed(0)}%)</p>
                             <p className="text-xs text-muted-foreground">
-                              Total: {formatCurrency(totalAptExp)} • Pagó: {formatCurrency(partnerPaid)}
+                              Total: {formatCurrency(totalAptExp)} • Pagó: {formatCurrency(partnerPaidExpenses + partnerPayments)}
                             </p>
                           </div>
                           <p className="font-semibold text-emerald-400">{formatCurrency(selectedDebt.deptoDebt)}</p>
@@ -1431,7 +1434,8 @@ export default function App() {
                                 description: `Pago ${partnerName}`,
                                 amount: selectedDebt.deptoDebt,
                                 category: 'Pago',
-                                paid_by: partnerName
+                                paid_by: partnerName,
+                                is_payment: true
                               })
                               await loadData()
                               await loadMonthly()
@@ -1570,7 +1574,17 @@ export default function App() {
   const Apartment = () => {
     const [editing, setEditing] = useState(null), [val, setVal] = useState('')
     const getSal = n => aptSalaries.find(s => s.person_name === n)?.salary || 0
-    const shares = aptConfig.map(p => { const sal = getSal(p.person_name), share = totalAptSal > 0 ? (sal / totalAptSal) * 100 : p.percentage, owes = (share / 100) * totalAptExp, paid = aptExpenses.filter(e => e.paid_by === p.person_name).reduce((s, e) => s + +e.amount, 0); return { ...p, sal, share, owes, paid, balance: paid - owes } })
+    const shares = aptConfig.map(p => { 
+      const sal = getSal(p.person_name)
+      const share = totalAptSal > 0 ? (sal / totalAptSal) * 100 : p.percentage
+      const owes = (share / 100) * totalAptExp
+      // Solo contar gastos reales, no pagos
+      const paidExpenses = aptExpenses.filter(e => e.paid_by === p.person_name && !e.is_payment).reduce((s, e) => s + +e.amount, 0)
+      const payments = aptExpenses.filter(e => e.paid_by === p.person_name && e.is_payment).reduce((s, e) => s + +e.amount, 0)
+      // Balance = lo que pagó de gastos + pagos que hizo - lo que debe
+      const balance = paidExpenses + payments - owes
+      return { ...p, sal, share, owes, paidExpenses, payments, balance } 
+    })
     
     return (
       <div className="space-y-4">
@@ -1643,7 +1657,7 @@ export default function App() {
                 </div>
                 <div className="grid grid-cols-3 gap-2 text-xs">
                   <div>Debe: <span className="font-medium">{formatCurrency(p.owes)}</span></div>
-                  <div>Pagó: <span className="font-medium">{formatCurrency(p.paid)}</span></div>
+                  <div>Pagó: <span className="font-medium">{formatCurrency(p.paidExpenses + p.payments)}</span></div>
                   <div>Saldo: <span className={cn('font-bold', p.balance >= 0 ? 'text-emerald-400' : 'text-red-400')}>{p.balance >= 0 ? '+' : ''}{formatCurrency(p.balance)}</span></div>
                 </div>
               </div>
@@ -1662,9 +1676,14 @@ export default function App() {
           <CardHeader><CardTitle className="text-base">📋 Gastos del mes</CardTitle></CardHeader>
           <CardContent>
             {aptExpenses.length ? aptExpenses.map(e => (
-              <div key={e.id} className="flex justify-between items-center p-2 border-b border-border last:border-0">
-                <div><p className="font-medium text-sm">{e.description}</p><p className="text-xs text-muted-foreground">{e.category} • {e.paid_by}</p></div>
-                <span className="font-semibold">{formatCurrency(e.amount)}</span>
+              <div key={e.id} className={cn("flex justify-between items-center p-2 border-b border-border last:border-0", e.is_payment && "bg-emerald-500/10")}>
+                <div>
+                  <p className="font-medium text-sm">{e.description}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {e.is_payment ? '💸 Pago' : e.category} • {e.paid_by}
+                  </p>
+                </div>
+                <span className={cn("font-semibold", e.is_payment && "text-emerald-400")}>{formatCurrency(e.amount)}</span>
               </div>
             )) : <p className="text-center text-muted-foreground py-4">Sin gastos</p>}
           </CardContent>

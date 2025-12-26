@@ -636,7 +636,8 @@ export async function createApartmentExpense(expense) {
       description: expense.description, 
       amount: parseFloat(expense.amount), 
       category: expense.category, 
-      paid_by: expense.paid_by 
+      paid_by: expense.paid_by,
+      is_payment: expense.is_payment || false
     }])
     .select()
     .single()
